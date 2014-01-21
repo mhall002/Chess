@@ -10,6 +10,7 @@ public class ChessAI : MonoBehaviour {
 
     public int NodesSearched = 0;
     public long MaxSearchLength = 20000;
+    public int Collisions = 0;
     //public long ReportGranularity = 100;
 
     public int PawnValue;
@@ -17,12 +18,26 @@ public class ChessAI : MonoBehaviour {
     public int KnightValue;
     public int BishopValue;
     public int QueenValue;
+    public int MobilityEvaluateFactor;
 
+    public int TranspositionTableSize = 100000000;
+    public int FutilityMargin;
 
+    public int BoardValue;
+
+    ZobristHash Hash = new ZobristHash();
+    TranspositionTable Table;
 
     public GUIScript gui;
 
     public int MaxSearchDepth = 4;
+
+    public int TableExactHit = 0;
+    public int TableAlphaHit = 0;
+    public int TableBetaHit = 0;
+
+    public int Alpha = 0;
+    public int Beta = 0;
 
     public event System.Action<Move> CPUMoveFound;
 
@@ -38,9 +53,20 @@ public class ChessAI : MonoBehaviour {
 	// Update is called once per frame
 	void Update () {
         gui.CPUNodesSearched = NodesSearched;
-        gui.CPUSearchDepth = MaxSearchDepth;
+        gui.CPUSearchDepth = usingStoredMove ? 1 : -1;
         gui.CPUGenerateTime = timer.ElapsedMilliseconds / 1000f;
+        gui.TransAlphaHits = TableAlphaHit;
+        gui.TransBetaHits = TableBetaHit;
+        gui.TransExactHits = TableExactHit;
+        gui.TransCollisions = Collisions;
+        gui.Alpha = Alpha;
+        gui.Beta = Beta;
 	}
+
+    public ChessAI()
+    {
+        Table = new TranspositionTable(TranspositionTableSize);
+    }
 
     NPiece[,] PopulatePieces (Piece[,] pieces)
     {
@@ -88,6 +114,7 @@ public class ChessAI : MonoBehaviour {
     public void SetBoard(Piece[,] pieces)
     {
         this.pieces = PopulatePieces(pieces);
+        
     }
 
     public Move GetMove(Colour colour)
@@ -96,7 +123,15 @@ public class ChessAI : MonoBehaviour {
 
         timer.Reset();
         timer.Start();
+        TableAlphaHit = 0;
+        TableBetaHit = 0;
+        TableExactHit = 0;
+        Collisions = 0;
         NodesSearched = 0;
+        Alpha = 0;
+        Beta = 0;
+        Hash.Hash(this.pieces, colour == Colour.Black);
+        this.BoardValue = Evaluate();
         int score = alphaBetaMax(-10000, 10000, MaxSearchDepth);
         timer.Stop();
         return chosenMove;
@@ -110,27 +145,60 @@ public class ChessAI : MonoBehaviour {
         if (depthRemaining == 0)
         {
             NodesSearched++;
-            return Evaluate();
+            return BoardValue;
         }
-        List<Move> moves = GetMoves(local);
-        IEnumerable moves2 = moves;
-        if (depthRemaining > 1)
+
+        TableEntry entry = Table.GetEntry(Hash.GetHash());
+        if (entry != null && entry.Depth >= depthRemaining)
         {
-            moves2 = OrderedMoves(moves, false);
-        }
-        foreach (Move move in moves2)
-        {
-            ExecuteMove(move);
-            int score = alphaBetaMin(alpha, beta, depthRemaining - 1);
-            UndoMove(move);
-            if (score >= beta)
+            int eval = entry.Eval;
+            if (eval >= beta && entry.Flag == AlphaBetaFlag.Exact || entry.Flag == AlphaBetaFlag.Beta)
             {
+                TableBetaHit++;
                 return beta;
             }
-            if (score > alpha)
+            if (eval > alpha && entry.Flag == AlphaBetaFlag.Exact)
             {
-                localMove = move;
-                alpha = score;
+                TableExactHit++;
+                localMove = entry.Move;
+                usingStoredMove = true;
+                alpha = eval;
+                Alpha = alpha;
+            }
+        }
+
+
+        if (localMove == null)
+        {
+            List<Move> moves = GetMoves(local);
+
+            IEnumerable moves2 = moves;
+            if (depthRemaining > 1)
+            {
+                moves2 = OrderedMoves(moves, false);
+            }
+            foreach (Move move in moves2)
+            {
+                ExecuteMove(move);
+                int score = alphaBetaMin(alpha, beta, depthRemaining - 1);
+                UndoMove(move);
+                if (score >= beta)
+                {
+                    TableEntry newEntry = new TableEntry(Hash.GetHash(), depthRemaining, score, AlphaBetaFlag.Beta, null);
+                    if (Table.AddEntry(newEntry))
+                        Collisions++;
+                    return beta;
+                }
+                if (score > alpha)
+                {
+                    TableEntry newEntry = new TableEntry(Hash.GetHash(), depthRemaining, score, AlphaBetaFlag.Exact, move);
+                    if (Table.AddEntry(newEntry))
+                        Collisions++;
+                    localMove = move;
+                    usingStoredMove = false;
+                    alpha = score;
+                    Alpha = alpha;
+                }
             }
         }
         chosenMove = localMove;
@@ -149,7 +217,7 @@ public class ChessAI : MonoBehaviour {
         foreach (Move move in moves)
         {
             ExecuteMove(move);
-            int score = Evaluate();
+            int score = BoardValue;
             UndoMove(move);
             scores.Add(new KeyValuePair<Move, int>(move, score));
             counter++;
@@ -161,14 +229,38 @@ public class ChessAI : MonoBehaviour {
             return scores.OrderByDescending(x => x.Value).Select(x => x.Key);
     }
 
+    bool usingStoredMove = false;
+
     int alphaBetaMin(int alpha, int beta, int depthRemaining)
     {
         if (depthRemaining == 0)
         {
             NodesSearched++;
-            return Evaluate();
+            return BoardValue;
         }
+
+        TableEntry entry = Table.GetEntry(Hash.GetHash());
+        if (entry != null && entry.Depth >= depthRemaining)
+        {
+            int eval = entry.Eval;
+            if (eval <= alpha && entry.Flag == AlphaBetaFlag.Exact || entry.Flag == AlphaBetaFlag.Alpha)
+            {
+                TableAlphaHit++;
+                return alpha;
+            }
+            if (eval < beta && entry.Flag == AlphaBetaFlag.Exact)
+            {
+                TableExactHit++;
+                chosenMove = entry.Move;
+                usingStoredMove = true;
+                beta = eval;
+                Beta = beta;
+                return beta;
+            }
+        }
+
         List<Move> moves = GetMoves(GetOther(local));
+
         IEnumerable moves2 = moves;
         if (depthRemaining > 1)
         {
@@ -181,18 +273,57 @@ public class ChessAI : MonoBehaviour {
             UndoMove(move);
             if (score <= alpha)
             {
+                TableEntry newEntry = new TableEntry(Hash.GetHash(), depthRemaining, score, AlphaBetaFlag.Alpha, null);
+                if (Table.AddEntry(newEntry))
+                    Collisions++;
                 return alpha;
             }
             if (score < beta)
             {
+                TableEntry newEntry = new TableEntry(Hash.GetHash(), depthRemaining, score, AlphaBetaFlag.Exact, move);
+                if (Table.AddEntry(newEntry))
+                    Collisions++;
                 chosenMove = move;
+                usingStoredMove = false;
                 beta = score;
+                Beta = beta;
             }
         }
         return beta;
     }
 
-    int Evaluate()
+    int Value(NPiece piece)
+    {
+        if (piece != null)
+        {
+            int value = 0;
+            switch (piece.Type)
+            {
+                case Type.Bishop:
+                    value = BishopValue;
+                    break;
+                case Type.King:
+                    value = 20000;
+                    break;
+                case Type.Knight:
+                    value = KnightValue;
+                    break;
+                case Type.Pawn:
+                    value = PawnValue;
+                    break;
+                case Type.Queen:
+                    value = QueenValue;
+                    break;
+                case Type.Rook:
+                    value = RookValue;
+                    break;
+            }
+            return value * (piece.Colour == local ? 1 : -1);
+        }
+        return 0;
+    }
+
+    int Evaluate(bool mobility = false)
     {
         int Score = 0;
         foreach (NPiece piece in pieces)
@@ -206,7 +337,7 @@ public class ChessAI : MonoBehaviour {
                         value = BishopValue;
                         break;
                     case Type.King:
-                        value = 2000;
+                        value = 20000;
                         break;
                     case Type.Knight:
                         value = KnightValue;
@@ -224,6 +355,8 @@ public class ChessAI : MonoBehaviour {
                 Score += value * (piece.Colour == local ? 1 : -1);
             }
         }
+        if (mobility)
+            Score += (GetMoves(local).Count - GetMoves(GetOther(local)).Count)*MobilityEvaluateFactor;
         return Score;
     }
 
@@ -245,18 +378,46 @@ public class ChessAI : MonoBehaviour {
         {
             if (move.newx == 1)
             {
-                pieces[0, move.newy] = pieces[2, move.newy];
-                pieces[2, move.newy] = null;
+                AddPiece(0, move.newy, pieces[2, move.newy]);
+                RemovePiece(2, move.oldy, pieces[2, move.newy]);
             }
             else
             {
-                pieces[7, move.newy] = pieces[5, move.newy];
-                pieces[5, move.newy] = null;
+                AddPiece(7, move.newy, pieces[5, move.newy]);
+                RemovePiece(5, move.oldy, pieces[5, move.newy]);
             }
         }
 
-        pieces[move.newx, move.newy] = move.destroyed;
-        pieces[move.oldx, move.oldy] = move.piece;
+        AddPiece(move.newx, move.newy, move.destroyed);
+        AddPiece(move.oldx, move.oldy, move.piece);
+
+        Hash.ChangeTurn();
+    }
+
+    void AddPiece(int x, int y, NPiece piece)
+    {
+        
+        if (pieces[x, y] != null)
+        {
+            Hash.ChangePiece(x, y, pieces[x, y].Type, pieces[x, y].Colour);
+            BoardValue -= Value(pieces[x, y]);
+        }
+        if (piece != null)
+        {
+            Hash.ChangePiece(x, y, piece.Type, piece.Colour);
+            BoardValue += Value(piece);
+        }
+        pieces[x, y] = piece;
+    }
+
+    void RemovePiece(int x, int y, NPiece piece)
+    {
+        if (pieces[x, y] != null)
+        {
+            Hash.ChangePiece(x, y, pieces[x, y].Type, pieces[x, y].Colour);
+            BoardValue -= Value(pieces[x, y]);
+        }
+        pieces[x, y] = null;
     }
 
     void ExecuteMove(Move move)
@@ -266,8 +427,8 @@ public class ChessAI : MonoBehaviour {
             NPiece newQueen = new NPiece();
             newQueen.Type = Type.Queen;
             newQueen.Colour = move.piece.Colour;
-            pieces[move.newx, move.newy] = newQueen;
-            pieces[move.oldx, move.oldy] = null;
+            AddPiece(move.newx, move.newy, newQueen);
+            RemovePiece(move.oldx, move.oldy, move.piece);
         }
         else
         {
@@ -275,18 +436,19 @@ public class ChessAI : MonoBehaviour {
             {
                 if (move.newx == 1)
                 {
-                    pieces[2, move.newy] = pieces[0, move.newy];
-                    pieces[0, move.newy] = null;
+                    AddPiece(2, move.newy, pieces[0, move.newy]);
+                    RemovePiece(0, move.oldy, pieces[0, move.newy]);
                 }
                 else
                 {
-                    pieces[5, move.newy] = pieces[7, move.newy];
-                    pieces[7, move.newy] = null;
+                    AddPiece(5, move.newy, pieces[7, move.newy]);
+                    RemovePiece(7, move.oldy, pieces[7, move.newy]);
                 }
             }
-            pieces[move.newx, move.newy] = move.piece;
-            pieces[move.oldx, move.oldy] = null;
+            AddPiece(move.newx, move.newy, move.piece);
+            RemovePiece(move.oldx, move.oldy, move.piece);
         }
+        Hash.ChangeTurn();
     }
 
     bool Check(int x, int y, Colour colour)
@@ -568,7 +730,8 @@ class ZobristHash
     long[] castlingRightBitStrings;
     long[] enPassantBitStrings;
     long blackMoveBitString;
-    System.Random random;
+    System.Random random = new System.Random(123412);
+    public bool IsBlack = false;
 
     public ZobristHash()
     {
@@ -715,5 +878,63 @@ class ZobristHash
     public void ChangeTurn()
     {
         CurrentHash = CurrentHash ^ blackMoveBitString;
+        IsBlack = !IsBlack;
     }
+}
+
+public class TranspositionTable
+{
+    TableEntry[] table;
+    int TableSize = 1;
+
+    public TranspositionTable (int tableSize = 10000000)
+    {
+        this.TableSize = tableSize;
+        table = new TableEntry[tableSize];
+    }
+
+    public bool AddEntry(TableEntry entry)
+    {
+        if (table[entry.Zobrist % TableSize] != null && table[entry.Zobrist % TableSize].Zobrist != entry.Zobrist)
+        {
+            table[entry.Zobrist % TableSize] = entry;
+            return true;
+        }
+        table[entry.Zobrist % TableSize] = entry;
+        return false;
+    }
+
+    public TableEntry GetEntry(long zobrist)
+    {
+        TableEntry entry = table[zobrist % TableSize];
+        if (entry != null && entry.Zobrist == zobrist)
+            return entry;
+        return null;
+    }
+}
+
+public class TableEntry
+{
+    public long Zobrist;
+    public int Depth;
+    public AlphaBetaFlag Flag;
+    public int Eval;
+    public Move Move;
+
+
+    public TableEntry(long zobrist, int depth, int eval, AlphaBetaFlag flag, Move move)
+    {
+        Zobrist = zobrist;
+        Depth = depth;
+        Eval = eval;
+        Flag = flag;
+        Move = move;
+    }
+}
+
+public enum AlphaBetaFlag
+{
+    Exact,
+    Alpha,
+    Beta
 }
