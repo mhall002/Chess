@@ -60,11 +60,6 @@ namespace Assets.Scripts
             }
         }
 
-        public void PerformCPUMove()
-        {
-            ExecuteMove(CPUMove);
-        }
-
         private void GetMoves(int x, int y)
         {
             //List<Move> moves = new List<Move>();
@@ -443,18 +438,10 @@ namespace Assets.Scripts
             ResetBoard();
 
             ChessAI.SetBoard(pieces);
-            //Move move = ChessAI.GetMove(turn);
+            Move move = ChessAI.GetMove(turn);
 
-            //CreateGreenRect(move.oldx, move.oldy, move);
-            //CreateGreenRect(move.newx, move.newy, null);
-
-            Thread thread = new Thread(new ThreadStart(
-                () =>
-                {
-                    ChessAI_CPUMoveFound(ChessAI.GetMove(turn));
-                }));
-            FoundMove = false;
-            thread.Start();
+            CreateGreenRect(move.oldx, move.oldy, move);
+            CreateGreenRect(move.newx, move.newy, null);
 
             ChessAI.CPUMoveFound += ChessAI_CPUMoveFound;
         }
@@ -490,7 +477,7 @@ namespace Assets.Scripts
             AddPiece(WhiteBishop, 5, y, Colour.White);
             AddPiece(WhiteKing, 4, y, Colour.White);
             AddPiece(WhiteQueen, 3, y, Colour.White);
-            y+=1;
+            y+=2;
             for (int x = 0; x < 8; x++)
             {
                 AddPiece(WhitePawn, x, y, Colour.White);

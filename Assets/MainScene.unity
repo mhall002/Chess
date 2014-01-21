@@ -144,13 +144,6 @@ MonoBehaviour:
   CPUSearchDepth: 4
   CPUNodesSearched: 0
   CPUGenerateTime: 0
-  TransAlphaHits: 0
-  TransBetaHits: 0
-  TransExactHits: 0
-  TransCollisions: 0
-  Alpha: 0
-  Beta: 0
-  Controller: {fileID: 667700107}
 --- !u!1 &310185407
 GameObject:
   m_ObjectHideFlags: 0
@@ -207,23 +200,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   NodesSearched: 0
-  Collisions: 0
   PawnValue: 10
   RookValue: 50
   KnightValue: 30
   BishopValue: 30
   QueenValue: 90
-  MobilityEvaluateFactor: 0
-  TranspositionTableSize: 1000000000
-  FutilityMargin: 5
-  BoardValue: 0
   gui: {fileID: 285159411}
-  MaxSearchDepth: 8
-  TableExactHit: 0
-  TableAlphaHit: 0
-  TableBetaHit: 0
-  Alpha: 0
-  Beta: 0
+  MaxSearchDepth: 6
 --- !u!4 &465924552
 Transform:
   m_ObjectHideFlags: 0
