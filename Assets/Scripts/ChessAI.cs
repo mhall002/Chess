@@ -45,8 +45,6 @@ public class ChessAI : MonoBehaviour {
 
     NPiece[,] pieces = new NPiece[8, 8];
 
-    Move[] chosenMoves = new Move[8];
-
 	// Use this for initialization
 	void Start () {
 	
@@ -55,7 +53,7 @@ public class ChessAI : MonoBehaviour {
 	// Update is called once per frame
 	void Update () {
         gui.CPUNodesSearched = NodesSearched;
-        gui.CPUSearchDepth = usingStoredMove ? 1 : -1;
+        gui.CPUSearchDepth = MaxSearchDepth;
         gui.CPUGenerateTime = timer.ElapsedMilliseconds / 1000f;
         gui.TransAlphaHits = TableAlphaHit;
         gui.TransBetaHits = TableBetaHit;
@@ -79,8 +77,6 @@ public class ChessAI : MonoBehaviour {
                 if (pieces[x, y] != null)
                 {
                     newPieces[x, y] = new NPiece(pieces[x, y]);
-                    //print(pieces[x, y].X + " " + pieces[x, y].Y + " " + pieces[x, y].Colour + " " + pieces[x, y].Type + " " + pieces[x, y].Moved);
-                    //print(newPieces[x, y].X + " " + newPieces[x, y].Y + " " + newPieces[x, y].Colour + " " + newPieces[x, y].Type + " " + newPieces[x, y].Moved);
                 }
             }
         return newPieces;
@@ -135,16 +131,7 @@ public class ChessAI : MonoBehaviour {
         this.BoardValue = Evaluate();
         int score = alphaBetaMax(-10000, 10000, MaxSearchDepth);
         timer.Stop();
-        print("Printing moves");
         int counter = 0;
-        foreach (Move move in chosenMoves)
-        {
-            if (move != null)
-            {
-                print(counter + ": " + move.oldx + "," + move.oldy + " - " + move.newx + "," + move.newy);
-            }
-            counter++;
-        }
 
         return chosenMove;
     }
@@ -173,7 +160,6 @@ public class ChessAI : MonoBehaviour {
             {
                 TableExactHit++;
                 localMove = entry.Move;
-                usingStoredMove = true;
                 alpha = eval;
                 Alpha = alpha;
             }
@@ -211,7 +197,6 @@ public class ChessAI : MonoBehaviour {
                     if (Table.AddEntry(newEntry))
                         Collisions++;
                     localMove = move;
-                    usingStoredMove = false;
                     alpha = score;
                     Alpha = alpha;
                 }
@@ -220,9 +205,6 @@ public class ChessAI : MonoBehaviour {
         if (MaxSearchDepth - depthRemaining == 0)
         {
             chosenMove = localMove;
-            print("Returning " + (MaxSearchDepth - depthRemaining) + ": " + (localMove == null));
-            print("Evaluate: " + BoardValue + " - " + Evaluate());
-            chosenMoves[MaxSearchDepth - depthRemaining] = localMove;
         }
         return alpha;
     }
@@ -240,6 +222,11 @@ public class ChessAI : MonoBehaviour {
         {
             ExecuteMove(move);
             int score = BoardValue;
+            TableEntry entry = Table.GetEntry(Hash.GetHash());
+            if (entry != null)
+            {
+                score = entry.Eval;
+            }
             UndoMove(move);
             scores.Add(new KeyValuePair<Move, int>(move, score));
             counter++;
@@ -250,8 +237,6 @@ public class ChessAI : MonoBehaviour {
         else
             return scores.OrderByDescending(x => x.Value).Select(x => x.Key);
     }
-
-    bool usingStoredMove = false;
 
     int alphaBetaMin(int alpha, int beta, int depthRemaining)
     {
@@ -274,8 +259,6 @@ public class ChessAI : MonoBehaviour {
             {
                 TableExactHit++;
                 chosenMove = entry.Move;
-                chosenMoves[MaxSearchDepth - depthRemaining] = entry.Move;
-                usingStoredMove = true;
                 beta = eval;
                 Beta = beta;
                 return beta;
@@ -312,8 +295,6 @@ public class ChessAI : MonoBehaviour {
                 if (Table.AddEntry(newEntry))
                     Collisions++;
                 chosenMove = move;
-                chosenMoves[MaxSearchDepth - depthRemaining] = move;
-                usingStoredMove = false;
                 beta = score;
                 Beta = beta;
             }
