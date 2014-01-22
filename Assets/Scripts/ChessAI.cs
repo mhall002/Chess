@@ -45,6 +45,8 @@ public class ChessAI : MonoBehaviour {
 
     NPiece[,] pieces = new NPiece[8, 8];
 
+    Move[] chosenMoves = new Move[8];
+
 	// Use this for initialization
 	void Start () {
 	
@@ -134,6 +136,17 @@ public class ChessAI : MonoBehaviour {
         this.BoardValue = Evaluate();
         int score = alphaBetaMax(-10000, 10000, MaxSearchDepth);
         timer.Stop();
+        print("Printing moves");
+        int counter = 0;
+        foreach (Move move in chosenMoves)
+        {
+            if (move != null)
+            {
+                print(counter + ": " + move.oldx + "," + move.oldy + " - " + move.newx + "," + move.newy);
+            }
+            counter++;
+        }
+
         return chosenMove;
     }
 
@@ -166,7 +179,6 @@ public class ChessAI : MonoBehaviour {
                 Alpha = alpha;
             }
         }
-
 
         if (localMove == null)
         {
@@ -201,7 +213,12 @@ public class ChessAI : MonoBehaviour {
                 }
             }
         }
-        chosenMove = localMove;
+        if (MaxSearchDepth - depthRemaining == 0)
+        {
+            chosenMove = localMove;
+            print("Returning " + (MaxSearchDepth - depthRemaining) + ": " + (localMove == null));
+            chosenMoves[MaxSearchDepth - depthRemaining] = localMove;
+        }
         return alpha;
     }
 
@@ -252,6 +269,7 @@ public class ChessAI : MonoBehaviour {
             {
                 TableExactHit++;
                 chosenMove = entry.Move;
+                chosenMoves[MaxSearchDepth - depthRemaining] = entry.Move;
                 usingStoredMove = true;
                 beta = eval;
                 Beta = beta;
@@ -284,6 +302,7 @@ public class ChessAI : MonoBehaviour {
                 if (Table.AddEntry(newEntry))
                     Collisions++;
                 chosenMove = move;
+                chosenMoves[MaxSearchDepth - depthRemaining] = move;
                 usingStoredMove = false;
                 beta = score;
                 Beta = beta;
@@ -937,4 +956,15 @@ public enum AlphaBetaFlag
     Exact,
     Alpha,
     Beta
+}
+
+public class MoveValue
+{
+    public int Value;
+    public Move Move;
+    public MoveValue (Move move, int value)
+    {
+        Move = move;
+        Value = value;
+    }
 }
