@@ -116,7 +116,6 @@ public class ChessAI : MonoBehaviour {
     public void SetBoard(Piece[,] pieces)
     {
         this.pieces = PopulatePieces(pieces);
-        
     }
 
     public Move GetMove(Colour colour)
@@ -191,9 +190,14 @@ public class ChessAI : MonoBehaviour {
             }
             foreach (Move move in moves2)
             {
+                int oldScore = BoardValue;
                 ExecuteMove(move);
                 int score = alphaBetaMin(alpha, beta, depthRemaining - 1);
                 UndoMove(move);
+                if (oldScore != BoardValue)
+                {
+                    print("Woah Thar " + (score - oldScore) + ": " + move.piece.Type + " - " + move.oldx + "," + move.oldy + " - " + move.newx + "," + move.newy);
+                }
                 if (score >= beta)
                 {
                     TableEntry newEntry = new TableEntry(Hash.GetHash(), depthRemaining, score, AlphaBetaFlag.Beta, null);
@@ -217,6 +221,7 @@ public class ChessAI : MonoBehaviour {
         {
             chosenMove = localMove;
             print("Returning " + (MaxSearchDepth - depthRemaining) + ": " + (localMove == null));
+            print("Evaluate: " + BoardValue + " - " + Evaluate());
             chosenMoves[MaxSearchDepth - depthRemaining] = localMove;
         }
         return alpha;
@@ -286,9 +291,14 @@ public class ChessAI : MonoBehaviour {
         }
         foreach (Move move in moves2)
         {
+            int oldScore = BoardValue;
             ExecuteMove(move);
             int score = alphaBetaMax(alpha, beta, depthRemaining - 1);
             UndoMove(move);
+            if (oldScore != BoardValue)
+            {
+                print("Woah Thar " + (score - oldScore) + ": " + move.piece.Type + " - " + move.oldx + "," + move.oldy + " - " + move.newx + "," + move.newy);
+            }
             if (score <= alpha)
             {
                 TableEntry newEntry = new TableEntry(Hash.GetHash(), depthRemaining, score, AlphaBetaFlag.Alpha, null);
@@ -388,6 +398,10 @@ public class ChessAI : MonoBehaviour {
         move.newy = newy;
         move.piece = pieces[oldx, oldy];
         move.destroyed = pieces[newx, newy];
+        if (move.piece.Moved == false)
+        {
+            move.firstMove = true;
+        }
         return move;
     }
 
@@ -410,12 +424,16 @@ public class ChessAI : MonoBehaviour {
         AddPiece(move.newx, move.newy, move.destroyed);
         AddPiece(move.oldx, move.oldy, move.piece);
 
+        if (move.firstMove)
+        {
+            move.piece.Moved = false;
+        }
+
         Hash.ChangeTurn();
     }
 
     void AddPiece(int x, int y, NPiece piece)
     {
-        
         if (pieces[x, y] != null)
         {
             Hash.ChangePiece(x, y, pieces[x, y].Type, pieces[x, y].Colour);
@@ -467,6 +485,7 @@ public class ChessAI : MonoBehaviour {
             AddPiece(move.newx, move.newy, move.piece);
             RemovePiece(move.oldx, move.oldy, move.piece);
         }
+        move.piece.Moved = true;
         Hash.ChangeTurn();
     }
 
@@ -712,6 +731,7 @@ public class ChessAI : MonoBehaviour {
 public class Move
 {
     public int oldx, oldy, newx, newy;
+    public bool firstMove = false;
     public NPiece destroyed, piece;
 }
 
